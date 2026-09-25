@@ -1,0 +1,332 @@
+{
+  "info": {
+    "name": "Ava Data Skip Tracing API",
+    "description": "Skip tracing API from Ava Data, LLC: send a name and address and get phone numbers and emails back in one synchronous call, or upload a CSV of addresses for bulk skip tracing. You pay per match — 1 credit (2¢) per data type per match; a search that finds nothing costs nothing. Every account is on the $9/month plan with 100 credits included.\n\nSetup: set the collection variables `baseUrl` (already https://app.avadata.ai/api/v1) and `apiKey`. Keys are generated from Settings → API Access once an administrator enables API access for your account. Each key is limited to 60 requests per minute.\n\nBuilt from the public OpenAPI 3.0.3 spec: https://avadata.ai/openapi.json · Docs: https://avadata.ai/docs/ · Pricing: https://avadata.ai/pricing/",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "https://app.avadata.ai/api/v1",
+      "type": "string",
+      "description": "Production server, from the spec's servers block."
+    },
+    {
+      "key": "apiKey",
+      "value": "",
+      "type": "string",
+      "description": "Your API key (sk_live_...). Sent as a bearer token. Never commit a real key."
+    },
+    {
+      "key": "jobId",
+      "value": "",
+      "type": "string",
+      "description": "The job ID returned by a bulk or audience upload."
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{apiKey}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "Search",
+      "description": "Single-record skip trace searches.",
+      "item": [
+        {
+          "name": "Standard Search",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/standard-search",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "standard-search"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"Jane\",\n  \"lastName\": \"Doe\",\n  \"address\": \"123 Main St\",\n  \"city\": \"Northridge\",\n  \"state\": \"CA\",\n  \"zip\": \"91324\",\n  \"dataTypes\": [\"phone\", \"email\"]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Flexible search that returns phone data, email data, or both via the dataTypes parameter. Charged 1 credit per data type per match (max 2). Credits are only charged when a match is found.\n\nRequired: lastName, dataTypes. dataTypes items: \"phone\", \"email\" — [\"phone\"] = 1 credit, [\"email\"] = 1 credit, [\"phone\",\"email\"] = 2 credits.\n\nResponse data: matchFound, creditsCharged, phones[] (only when \"phone\" was requested), emails[] (only when \"email\" was requested), name, addresses[], matchType."
+          }
+        },
+        {
+          "name": "Deep Search",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/deep-search",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "deep-search"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"Jane\",\n  \"lastName\": \"Doe\",\n  \"address\": \"123 Main St\",\n  \"city\": \"Northridge\",\n  \"state\": \"CA\",\n  \"zip\": \"91324\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Comprehensive skip trace returning phone numbers, email addresses, and related persons/family members. Costs 10 credits per match. Credits are only charged when a match is found.\n\nRequired: lastName. firstName narrows the search.\n\nResponse data: matchFound, creditsCharged (10 when a match is found, otherwise 0), subject (aliases, age, dob, deceased, phones, emails, addresses, bankruptcy) and relatedPeople[] with a relationship on each entry."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Bulk",
+      "description": "High-volume CSV processing with async jobs.",
+      "item": [
+        {
+          "name": "Upload CSV for bulk processing",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/bulk/upload",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "bulk",
+                "upload"
+              ]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": [],
+                  "description": "CSV file (.csv). Must include a header row and at least one data row."
+                },
+                {
+                  "key": "dataTypes",
+                  "value": "[\"phone\",\"email\"]",
+                  "type": "text",
+                  "description": "JSON array string of data types to append, e.g. [\"phone\"], [\"email\"], or [\"phone\",\"email\"]."
+                }
+              ]
+            },
+            "description": "Upload a CSV file for high-volume Standard Search processing. The CSV must contain at minimum an 'address' column; firstName, lastName, city, state, and zip columns narrow each search. Credits are reserved upfront and adjusted to actual matches after processing completes (1 credit per data type per match). Returns a jobId to poll for status and download results.\n\nResponse data: jobId, lookupId, recordCount, dataTypes[], creditsPerMatch, status, message."
+          }
+        },
+        {
+          "name": "Check bulk job status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/bulk/{{jobId}}/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "bulk",
+                "{{jobId}}",
+                "status"
+              ]
+            },
+            "description": "Poll the progress of a bulk processing job.\n\nResponse data: jobId, status (uploading | queued | processing | completed | failed), progress (0-100), estimatedSecondsRemaining, numRecords, numMatches, errorMessage."
+          }
+        },
+        {
+          "name": "Download bulk job results",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/bulk/{{jobId}}/download?format=json",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "bulk",
+                "{{jobId}}",
+                "download"
+              ],
+              "query": [
+                {
+                  "key": "format",
+                  "value": "json",
+                  "description": "Response format: json (default) or csv."
+                }
+              ]
+            },
+            "description": "Download the results of a completed bulk job as JSON (default) or CSV. The job must be in the 'completed' status."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Digital Matching",
+      "description": "Turn a contact CSV into ready-to-upload Custom Audience files for major ad platforms. Securely hashed identifiers, formatted per platform. Digital Matching prepares the files; it does not launch campaigns.",
+      "item": [
+        {
+          "name": "Upload CSV to build ad audiences",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/audience/upload",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "audience",
+                "upload"
+              ]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": [],
+                  "description": "CSV file (.csv). Must include a header row and at least one data row."
+                },
+                {
+                  "key": "platforms",
+                  "value": "[\"facebook\",\"google\"]",
+                  "type": "text",
+                  "description": "JSON array string of target platforms: \"facebook\", \"google\", \"linkedin\", \"tiktok\", \"generic\"."
+                }
+              ]
+            },
+            "description": "Upload a contact CSV and receive ready-to-upload Custom Audience files for the selected ad platforms. The CSV needs an email or phone column, or a name plus address/city/state/zip columns. Credits are reserved upfront and only matched contacts are charged (flat rate per matched contact — every selected platform included).\n\nBy uploading you confirm you have the right to use the list for advertising and will follow each ad platform's customer-list policies.\n\nResponse data: jobId, lookupId, recordCount, platforms[], creditsPerMatch, status, message."
+          }
+        },
+        {
+          "name": "Check Digital Matching job status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/audience/{{jobId}}/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "audience",
+                "{{jobId}}",
+                "status"
+              ]
+            },
+            "description": "Poll the progress of a Digital Matching job."
+          }
+        },
+        {
+          "name": "Download audience files",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/audience/{{jobId}}/download",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "audience",
+                "{{jobId}}",
+                "download"
+              ],
+              "query": [
+                {
+                  "key": "platform",
+                  "value": "facebook",
+                  "disabled": true,
+                  "description": "Optional: facebook | google | linkedin | tiktok | generic. Download a single platform's CSV instead of the full ZIP."
+                }
+              ]
+            },
+            "description": "Download the completed job's audience files. Default is a ZIP containing one ready-to-upload CSV per selected platform, a master data file, and upload instructions. Pass ?platform= to download a single platform's CSV instead. The job must be in the 'completed' status."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Account",
+      "description": "Credit balance and API usage.",
+      "item": [
+        {
+          "name": "Check credit balance",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/credits",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "credits"
+              ]
+            },
+            "description": "Returns your current credit balance, including subscription credits and wallet balance.\n\nResponse data: subscriptionCredits, walletCredits, reservedCredits, totalCredits, availableCredits, subscriptionStatus."
+          }
+        },
+        {
+          "name": "Get API usage",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/usage?limit=50&offset=0",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "usage"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "50",
+                  "description": "Number of recent activity records to return (1-100, default 50)."
+                },
+                {
+                  "key": "offset",
+                  "value": "0",
+                  "description": "Number of records to skip for pagination (default 0)."
+                }
+              ]
+            },
+            "description": "Returns aggregate API usage statistics plus a paginated list of recent requests."
+          }
+        }
+      ]
+    }
+  ]
+}
