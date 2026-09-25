@@ -1,14 +1,44 @@
 # Ava Data Skip Tracing API — code examples (curl, Node.js, Python)
 
+[API docs](https://avadata.ai/docs/) · [OpenAPI spec](https://avadata.ai/openapi.json) · [Pricing](https://avadata.ai/pricing/) · [Postman collection](postman-collection.json) · **[Get an API key →](https://app.avadata.ai/register)**
+
 The **Ava Data API** is a REST skip tracing API from Ava Data, LLC. Send a name and address and get
 phone numbers and email addresses back in one synchronous call, or upload a CSV of property
 addresses for bulk skip tracing. You pay per match: 1 credit (2¢) per data type per match, and a
 search that finds nothing costs nothing.
 
-- API reference: <https://avadata.ai/docs/>
-- OpenAPI 3.0.3 spec: <https://avadata.ai/openapi.json>
-- Pricing: <https://avadata.ai/pricing/>
-- Skip tracing API overview: <https://avadata.ai/skip-tracing-api/>
+## Why developers use it
+
+- **You pay only for matches.** 1 credit (2¢) per data type per match; a search that finds nothing
+  costs nothing, and there is no order minimum.
+- **One API for single records and whole files.** Synchronous `/standard-search` and `/deep-search`
+  for one record at a time, and `/bulk/upload` for a CSV that needs only an `address` column.
+- **Documented in the open.** A public OpenAPI 3.0.3 spec, rendered docs at
+  [avadata.ai/docs](https://avadata.ai/docs/), the runnable scripts in [`examples/`](examples/) and
+  a Postman collection.
+
+## Get started in 3 steps
+
+1. **Create an account** at [app.avadata.ai/register](https://app.avadata.ai/register). Every
+   account, API included, is on the $9/month plan, which includes 100 credits.
+2. **Generate an API key** under **Settings → API Access** (keys are available once an
+   administrator enables API access for your account).
+3. **Make your first call:**
+
+   ```bash
+   export AVADATA_API_KEY=sk_live_your_api_key_here
+   ./examples/standard-search.sh <last_name> <first_name> "<street address>" <city> <state> <zip>
+   ```
+
+## Runnable examples
+
+| Task | Bash (curl) | Node.js 18+ | Python 3 (`requests`) |
+|---|---|---|---|
+| Skip trace one record | [`standard-search.sh`](examples/standard-search.sh) | [`standard-search.mjs`](examples/standard-search.mjs) | [`standard_search.py`](examples/standard_search.py) |
+| Bulk skip trace a CSV (upload → poll → download) | [`bulk-skip-trace.sh`](examples/bulk-skip-trace.sh) | [`bulk-skip-trace.mjs`](examples/bulk-skip-trace.mjs) | [`bulk_skip_trace.py`](examples/bulk_skip_trace.py) |
+
+Every script reads the key from `AVADATA_API_KEY`, takes its inputs as arguments, and prints the
+API's `error` message on failure. More on the API: [Ava Data skip tracing API](https://avadata.ai/skip-tracing-api/).
 
 ## At a glance
 
