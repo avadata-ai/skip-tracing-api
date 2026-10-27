@@ -19,8 +19,10 @@ AUTH="Authorization: Bearer $AVADATA_API_KEY"
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 
-# call METHOD PATH [curl args]: sets STATUS and writes the body to $TMP/body. On 429 it waits and
-# retries: Retry-After when the response has one, otherwise 60 s (the 60-per-minute 429 sends none).
+# call METHOD PATH [curl args]: sets STATUS and writes the body to $TMP/body. On 429 (code RATE_LIMITED,
+# 60 requests per minute per key) it waits the Retry-After seconds, or 60 s if the header is missing, then
+# retries. Responses also carry X-RateLimit-Limit, X-RateLimit-Remaining and X-RateLimit-Reset; counts are
+# kept per server instance, so treat them as a guide and wait on Retry-After.
 call() {
   local method=$1 path=$2 attempt wait
   shift 2

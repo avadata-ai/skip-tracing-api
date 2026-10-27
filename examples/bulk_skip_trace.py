@@ -35,9 +35,11 @@ HINTS = {
 
 
 def call(method, path, raw=False, timeout=60, **kwargs):
-    """One request. On 429, wait and retry: Retry-After when the response has one, otherwise 60 s
-    (the 60-per-minute 429 sends none). Returns `data` (or the response with raw=True); any other
-    error exits with the API's message."""
+    """One request. On 429 (code RATE_LIMITED, 60 requests per minute per key), wait the Retry-After
+    seconds, or 60 s if the header is missing, then retry. Responses also carry X-RateLimit-Limit,
+    X-RateLimit-Remaining and X-RateLimit-Reset; counts are kept per server instance, so treat them as a
+    guide and wait on Retry-After. Returns `data` (or the response with raw=True); any other error exits
+    with the API's message."""
     for attempt in range(1, 6):
         try:
             res = requests.request(method, f"{API}{path}", headers=auth, timeout=timeout, stream=raw, **kwargs)

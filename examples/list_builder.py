@@ -44,9 +44,11 @@ class ApiError(Exception):
 
 
 def call(method, path, raw=False, timeout=60, headers=None, **kwargs):
-    """One request. On 429, wait and retry: Retry-After when the response has one, otherwise 60 s
-    (the 60-per-minute 429 sends none). Returns (data, response), or the response with raw=True.
-    Other errors raise ApiError; network errors raise requests.RequestException."""
+    """One request. On 429 (code RATE_LIMITED for the 60-per-minute key limit, or a List Builder code),
+    wait the Retry-After seconds, or 60 s if the header is missing, then retry. Responses also carry
+    X-RateLimit-Limit, X-RateLimit-Remaining and X-RateLimit-Reset for the key limit; counts are kept per
+    server instance, so treat them as a guide and wait on Retry-After. Returns (data, response), or the
+    response with raw=True. Other errors raise ApiError; network errors raise requests.RequestException."""
     for attempt in range(1, 6):
         res = requests.request(method, f"{API}{path}", headers={**auth, **(headers or {})},
                                timeout=timeout, stream=raw, **kwargs)

@@ -29,8 +29,10 @@ HINTS = {
 
 
 def call(path, body):
-    """POST JSON and return `data`. On 429, wait and retry: Retry-After when the response has one,
-    otherwise 60 s (the 60-per-minute 429 sends none). Any other error exits with the API's message."""
+    """POST JSON and return `data`. On 429 (code RATE_LIMITED, 60 requests per minute per key), wait the
+    Retry-After seconds, or 60 s if the header is missing, then retry. Responses also carry
+    X-RateLimit-Limit, X-RateLimit-Remaining and X-RateLimit-Reset; counts are kept per server instance,
+    so treat them as a guide and wait on Retry-After. Any other error exits with the API's message."""
     for attempt in range(1, 6):
         try:
             res = requests.post(f"{API}{path}", headers={"Authorization": f"Bearer {key}"}, json=body, timeout=60)

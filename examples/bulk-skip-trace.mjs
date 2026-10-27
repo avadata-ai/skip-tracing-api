@@ -28,9 +28,11 @@ const HINTS = {
 };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-// One request. On 429 it waits and retries: Retry-After when the response has one, otherwise 60 s
-// (the 60-per-minute 429 sends none). Returns `data` (or the raw response with raw: true); any other
-// error throws with the API's message.
+// One request. On 429 (code RATE_LIMITED, 60 requests per minute per key) it waits the Retry-After
+// seconds, or 60 s if the header is missing, then retries. Responses also carry X-RateLimit-Limit,
+// X-RateLimit-Remaining and X-RateLimit-Reset; counts are kept per server instance, so treat them as a
+// guide and wait on Retry-After. Returns `data` (or the raw response with raw: true); any other error
+// throws with the API's message.
 async function api(path, { method = "GET", body, raw = false, timeout = 60_000 } = {}) {
   for (let attempt = 1; ; attempt++) {
     const res = await fetch(`${API}${path}`, {

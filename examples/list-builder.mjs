@@ -34,9 +34,11 @@ class ApiError extends Error {
   }
 }
 
-// One request. On 429 it waits and retries: Retry-After when the response has one, otherwise 60 s
-// (the 60-per-minute 429 sends none). Returns { data, res } (res alone with raw: true); any other
-// error throws an ApiError with the API's message.
+// One request. On 429 (code RATE_LIMITED for the 60-per-minute key limit, or a List Builder code) it
+// waits the Retry-After seconds, or 60 s if the header is missing, then retries. Responses also carry
+// X-RateLimit-Limit, X-RateLimit-Remaining and X-RateLimit-Reset for the key limit; counts are kept per
+// server instance, so treat them as a guide and wait on Retry-After. Returns { data, res } (res alone
+// with raw: true); any other error throws an ApiError with the API's message.
 async function api(path, { method = "GET", body, headers = {}, raw = false, timeout = 60_000 } = {}) {
   for (let attempt = 1; ; attempt++) {
     const res = await fetch(`${API}${path}`, {

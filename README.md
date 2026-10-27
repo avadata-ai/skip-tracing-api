@@ -75,7 +75,8 @@ Every script:
 - takes its inputs as arguments and prints its usage when one is missing;
 - checks the HTTP status and `success`, prints the API's `error` (with `code` and `field` when present) and a
   hint, and exits non-zero on failure;
-- on `429`, waits for the `Retry-After` value when the response has one, otherwise 60 seconds, then retries;
+- on `429`, waits the number of seconds in the `Retry-After` header (60 if the header is missing), then
+  retries;
 - treats a no-match as a normal result, not an error;
 - sends each data type once.
 
@@ -90,7 +91,7 @@ JSON otherwise). The Node scripts are ES modules that use the built-in `fetch`. 
 | Base URL | `https://app.avadata.ai/api/v1` |
 | Authentication | `Authorization: Bearer sk_live_…` on every request |
 | Where to call it from | Your server. The API sends no CORS headers, so browsers block calls from web pages, and a key in browser or app code can be copied by anyone |
-| Rate limit | 60 requests per minute per API key, on every endpoint |
+| Rate limit | 60 requests per minute per API key, on every endpoint. Over it you get `429` with code `RATE_LIMITED` and a `Retry-After` header that says how many seconds to wait |
 | Request limits | JSON bodies up to 1 MB (`413 BODY_TOO_LARGE`). CSV uploads up to 100 MB, sent as `multipart/form-data` in a field named `file` (`413 FILE_TOO_LARGE`) |
 | Row limits | Bulk: 250,000 rows per file. Digital Matching: 50,000 rows per file. List Builder: 100,000 records per list |
 | Test mode | None (see above) |
@@ -119,15 +120,39 @@ Authorization: Bearer sk_live_your_api_key_here
 
 - **60 requests per minute per API key, on every endpoint.** Every request made with a valid key counts,
   including status polls, downloads and requests that return an error. The window is a fixed 60 seconds that
-  starts with the first request after the previous window ended.
-- **This 429 has no `Retry-After` header, no rate-limit headers and no `code`.** The body is
-  `{"success": false, "error": "Rate limit exceeded. Maximum 60 requests per minute."}`. Wait 60 seconds, then
-  retry, and slow down if it happens again. Poll job status every 5-10 seconds, not faster.
+  starts with the first request after the previous window ended. Poll job status every 5-10 seconds, not faster.
+- **Over the limit you get `429` with code `RATE_LIMITED` and a `Retry-After` header**: the whole seconds until
+  the window resets, at least 1. The body repeats it as `retryAfter`, with the `limit` and the reset time:
+
+  ```json
+  {
+    "success": false,
+    "error": "Rate limit exceeded: 60 requests per minute per API key. Try again in 42 seconds.",
+    "code": "RATE_LIMITED",
+    "retryAfter": 42,
+    "limit": 60,
+    "resetsAt": "2026-10-27T15:04:05.000Z"
+  }
+  ```
+
+  Wait `Retry-After` seconds, then retry. If a `429` comes without `Retry-After`, wait 60 seconds.
+- **Every response after the key is accepted carries the rate-limit headers**, errors and the `429` included
+  (a `401` doesn't):
+
+  | Header | Value |
+  |---|---|
+  | `X-RateLimit-Limit` | `60` |
+  | `X-RateLimit-Remaining` | Requests left in the current window |
+  | `X-RateLimit-Reset` | When the window resets, in Unix seconds |
+
+  Counts are kept per server instance, so treat `X-RateLimit-Remaining` as a guide and always honor
+  `Retry-After`.
 - **List Builder adds its own limits**, each with a `code`: `PREVIEW_MINUTE_LIMIT` (20 previews a minute per
   account, `Retry-After: 60`), `PREVIEW_DAILY_LIMIT` (250 a UTC day, with `resetsAt` and `Retry-After`),
   `ACTIVE_PULL_LIMIT` (5 lists pulling at once), `DOWNLOAD_LIMIT` (2 downloads at once), `SKIP_TRACE_IN_PROGRESS`
   (one skip trace set-up at a time per account) and `SKIP_TRACE_BUSY` (`Retry-After: 10`). Only the codes shown
-  with `Retry-After` send it. Honor it when it is sent; otherwise wait before you retry.
+  with `Retry-After` send it. Honor it when it is sent; otherwise wait before you retry (the examples wait 60
+  seconds). The `X-RateLimit-*` headers on these responses describe the per-key limit, not the List Builder one.
 - **Only `POST /lists` and `POST /lists/{listId}/skip-trace` accept an `Idempotency-Key` header** (1-255 visible
   ASCII characters, no spaces, kept for 24 hours). Sending the same key and body again returns the original
   response with the header `Idempotent-Replayed: true`, with no second list or charge. The same key with a
@@ -456,8 +481,9 @@ async function waitForJob(jobId, key) {
     const res = await fetch(`https://app.avadata.ai/api/v1/bulk/${jobId}/status`, {
       headers: { Authorization: `Bearer ${key}` },
     });
-    if (res.status === 429) { // no Retry-After on this 429: wait out the 60-second window
-      await new Promise((r) => setTimeout(r, 60_000));
+    if (res.status === 429) { // code RATE_LIMITED: wait Retry-After seconds (60 if the header is missing)
+      const wait = Number(res.headers.get("retry-after")) || 60;
+      await new Promise((r) => setTimeout(r, wait * 1000));
       continue;
     }
     const body = await res.json();
@@ -636,7 +662,7 @@ ones can be added to v1.
 | `404` | Job or list not found, or an unknown path or method (a JSON body, never `405`) | | No |
 | `409` | A request with this `Idempotency-Key` is still running | `IDEMPOTENCY_IN_PROGRESS` | Yes, shortly, with the same key |
 | `413` | Too large | `BODY_TOO_LARGE` (JSON over 1 MB), `FILE_TOO_LARGE` (upload over 100 MB) | No |
-| `429` | Rate limited | No code on the 60-per-minute limit; List Builder codes listed above | Yes: after `Retry-After`, or 60 seconds when there is none |
+| `429` | Rate limited | `RATE_LIMITED` (60 per minute per key, with `retryAfter`, `limit` and `resetsAt`); the List Builder codes listed above | Yes: after `Retry-After`, or 60 seconds when there is none |
 | `500` | Server error | A search 500 says credits were refunded | Searches: yes, after a short wait |
 | `503` | List preview count unavailable | `PREVIEW_UNAVAILABLE` | Yes |
 
@@ -694,8 +720,9 @@ company name in a full-name column counts only with the full address), or skip t
 `POST /lists/{listId}/skip-trace`.
 
 **What are the API rate limits?**
-60 requests per minute per API key, on every endpoint. The 429 for this limit has no `Retry-After` header: wait 60
-seconds, then retry more slowly.
+60 requests per minute per API key, on every endpoint. Over it you get `429` with code `RATE_LIMITED` and a
+`Retry-After` header that says how many seconds to wait. `X-RateLimit-Remaining` on each response shows how many
+requests are left in the current window.
 
 **Can I use the API with n8n or Zapier?**
 Yes, through each tool's generic HTTP request step: call the REST endpoints above with your bearer key. Ava Data
