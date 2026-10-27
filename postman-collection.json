@@ -1,7 +1,7 @@
 {
   "info": {
-    "name": "Ava Data Skip Tracing API",
-    "description": "Skip tracing API from Ava Data, LLC: send a name and address and get phone numbers and emails back in one synchronous call, or upload a CSV of addresses for bulk skip tracing. You pay per match — 1 credit (2¢) per data type per match; a search that finds nothing costs nothing. Every account is on the $9/month plan with 100 credits included.\n\nSetup: set the collection variables `baseUrl` (already https://app.avadata.ai/api/v1) and `apiKey`. Keys are generated from Settings → API Access once an administrator enables API access for your account. Each key is limited to 60 requests per minute.\n\nBuilt from the public OpenAPI 3.0.3 spec: https://avadata.ai/openapi.json · Docs: https://avadata.ai/docs/ · Pricing: https://avadata.ai/pricing/",
+    "name": "Ava Data API",
+    "description": "Postman collection for the Ava Data REST API: skip tracing (Standard Search, Deep Search, bulk CSV), List Builder property lists and Digital Matching ad audiences.\n\nSetup: set the collection variable apiKey to your key (sk_live_...). Generate it in the app under Settings → API Access → Generate New Key; it is shown once. baseUrl is already https://app.avadata.ai/api/v1, and every request below is relative to it. The key goes in the Authorization header as Bearer sk_live_...; this collection sends it for you.\n\nThere is no sandbox or test mode: every key is live, and searches, uploads and list pulls spend real credits (1 credit = 2¢). GET requests and the List Builder preview are free. Searches, uploads and List Builder previews and pulls need an active or trialing plan (403 SUBSCRIPTION_REQUIRED or SUBSCRIPTION_PAUSED otherwise).\n\nRate limit: 60 requests per minute per key, counting every request made with a valid key, including status polls, downloads and requests that return an error. That 429 has no Retry-After header and no code: wait 60 seconds, then back off. Some List Builder limits send Retry-After; honor it when present.\n\nErrors are {success: false, error, code?, field?} plus extra fields on some (needed/available/reserved/total on 402s, resumeAt on SUBSCRIPTION_PAUSED). Branch on the HTTP status first; many errors carry no code.\n\nThe upload and create requests save jobId, audienceJobId and listId into collection variables for the requests that follow.\n\nReference: in-app docs https://app.avadata.ai/api-docs (sign in) · OpenAPI https://app.avadata.ai/api/v1/openapi.json · Examples https://github.com/avadata-ai/skip-tracing-api · Terms https://avadata.ai/terms/",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -9,19 +9,43 @@
       "key": "baseUrl",
       "value": "https://app.avadata.ai/api/v1",
       "type": "string",
-      "description": "Production server, from the spec's servers block."
+      "description": "Production base URL. Request paths are relative to it."
     },
     {
       "key": "apiKey",
       "value": "",
       "type": "string",
-      "description": "Your API key (sk_live_...). Sent as a bearer token. Never commit a real key."
+      "description": "Your API key (sk_live_...). Keep it out of shared workspaces and source control."
     },
     {
       "key": "jobId",
       "value": "",
       "type": "string",
-      "description": "The job ID returned by a bulk or audience upload."
+      "description": "Bulk job ID, set by the bulk upload or list skip trace request."
+    },
+    {
+      "key": "audienceJobId",
+      "value": "",
+      "type": "string",
+      "description": "Digital Matching job ID, set by the audience upload request."
+    },
+    {
+      "key": "listId",
+      "value": "",
+      "type": "string",
+      "description": "List ID, set by the create list request."
+    },
+    {
+      "key": "createListIdempotencyKey",
+      "value": "",
+      "type": "string",
+      "description": "Created by the create list pre-request script; cleared after a 2xx."
+    },
+    {
+      "key": "skipTraceIdempotencyKey",
+      "value": "",
+      "type": "string",
+      "description": "Created by the list skip trace pre-request script; cleared after a 2xx."
     }
   ],
   "auth": {
@@ -37,7 +61,7 @@
   "item": [
     {
       "name": "Search",
-      "description": "Single-record skip trace searches.",
+      "description": "Single-record skip tracing. Synchronous; both need Content-Type: application/json. Unknown fields (for example first_name) are ignored without an error.",
       "item": [
         {
           "name": "Standard Search",
@@ -58,16 +82,16 @@
                 "standard-search"
               ]
             },
+            "description": "Phones, emails or both for one person, chosen with dataTypes.\n\nInput: lastName is the only field checked up front, but the search needs a name plus street + ZIP, or city + state. Without that it returns 400 code INSUFFICIENT_INPUT (credits refunded). A missing field returns 400 'Required' without naming the field.\n\ndataTypes: list each type once: [\"phone\"], [\"email\"] or [\"phone\",\"email\"]. A repeated type is charged again.\n\nCredits: 1 per requested type is taken before the search (402 'Insufficient credits' if not available). On a match every requested type is charged, even one that comes back empty; read creditsCharged. No match is refunded and reports creditsCharged 0.\n\nResponse data on a match: matchFound true, creditsCharged, phones [{number, lineType?}] (when phone was requested), emails [string] (when email was requested), name {first, last}, addresses [{address, city, state, zip, zip4?}], matchType \"Individual\" or \"Household\". No match: {matchFound: false, creditsCharged: 0}.\n\nlineType is free text (for example Mobile or Landline) and is left out when unknown. Numbers can be formatted, so normalize them. Household means a phone or email may belong to someone else at the address.\n\nA 500 'Search service temporarily unavailable. Credits have been refunded.' is safe to retry after a short wait. There is no idempotency key: after a timeout the search may have run and been charged.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"firstName\": \"Jane\",\n  \"lastName\": \"Doe\",\n  \"address\": \"123 Main St\",\n  \"city\": \"Northridge\",\n  \"state\": \"CA\",\n  \"zip\": \"91324\",\n  \"dataTypes\": [\"phone\", \"email\"]\n}",
+              "raw": "{\n  \"firstName\": \"Jane\",\n  \"lastName\": \"Doe\",\n  \"address\": \"123 Main St\",\n  \"city\": \"Austin\",\n  \"state\": \"TX\",\n  \"zip\": \"78701\",\n  \"dataTypes\": [\n    \"phone\",\n    \"email\"\n  ]\n}",
               "options": {
                 "raw": {
                   "language": "json"
                 }
               }
-            },
-            "description": "Flexible search that returns phone data, email data, or both via the dataTypes parameter. Charged 1 credit per data type per match (max 2). Credits are only charged when a match is found.\n\nRequired: lastName, dataTypes. dataTypes items: \"phone\", \"email\" — [\"phone\"] = 1 credit, [\"email\"] = 1 credit, [\"phone\",\"email\"] = 2 credits.\n\nResponse data: matchFound, creditsCharged, phones[] (only when \"phone\" was requested), emails[] (only when \"email\" was requested), name, addresses[], matchType."
+            }
           }
         },
         {
@@ -89,26 +113,26 @@
                 "deep-search"
               ]
             },
+            "description": "Phones, emails and related people for one person. lastName is required; the other fields narrow the search. Deep Search looks people up by name: a company, LLC or trust name in lastName won't find the owner, so send a person's name. For a property owned by a company, LLC or trust, or an address with no owner name, use a bulk upload with Street Address + City + State + ZIP.\n\nCredits: 10 must be available to start (402 'Insufficient credits' otherwise). The 10 are kept only when the result has a phone, an email or a related person, so matchFound true with creditsCharged 0 is possible. Total spend from creditsCharged, not matchFound.\n\nA search that matches too many people returns 400 code INSUFFICIENT_INPUT (credits refunded): add details and search again.\n\nResponse data: matchFound, creditsCharged and, on a match, subject {firstName, lastName, aliases? [string], age?, dob?, deceased, phones [{number, lineType?, disconnected}], emails [string], addresses [{address, city, state, zip}], bankruptcy} and relatedPeople [{firstName, lastName, age?, deceased, relationship, phones, emails, addresses, bankruptcy}].\n\nPhone numbers have dashes, parentheses and spaces removed, and zip can be ZIP+4 (78701-1234). deceased and bankruptcy false mean no record was found. relationship is one of Spouse, Parent, Child, Sibling, Other Relative, Roommate, Neighbor, Business Associate, Relative, Associate, Related. Related people carry phones only; their emails and addresses are always empty.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"firstName\": \"Jane\",\n  \"lastName\": \"Doe\",\n  \"address\": \"123 Main St\",\n  \"city\": \"Northridge\",\n  \"state\": \"CA\",\n  \"zip\": \"91324\"\n}",
+              "raw": "{\n  \"firstName\": \"Jane\",\n  \"lastName\": \"Doe\",\n  \"address\": \"123 Main St\",\n  \"city\": \"Austin\",\n  \"state\": \"TX\",\n  \"zip\": \"78701\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
                 }
               }
-            },
-            "description": "Comprehensive skip trace returning phone numbers, email addresses, and related persons/family members. Costs 10 credits per match. Credits are only charged when a match is found.\n\nRequired: lastName. firstName narrows the search.\n\nResponse data: matchFound, creditsCharged (10 when a match is found, otherwise 0), subject (aliases, age, dob, deceased, phones, emails, addresses, bankruptcy) and relatedPeople[] with a relationship on each entry."
+            }
           }
         }
       ]
     },
     {
       "name": "Bulk",
-      "description": "High-volume CSV processing with async jobs.",
+      "description": "Skip trace a CSV as a background job: upload, poll the status, download the results.",
       "item": [
         {
-          "name": "Upload CSV for bulk processing",
+          "name": "Upload CSV for bulk skip tracing",
           "request": {
             "method": "POST",
             "header": [],
@@ -122,6 +146,7 @@
                 "upload"
               ]
             },
+            "description": "Starts a bulk Standard Search job. The test script saves data.jobId into the jobId variable.\n\nCSV rules: a header row, UTF-8, no line breaks inside cells, at most 100 MB (413 FILE_TOO_LARGE) and 250,000 rows (400 'Batch size exceeds limit' with maxBatchSize). Send it as multipart/form-data in a field named file. Each row needs one of: First Name + Last Name + ZIP; First Name + Last Name + City + State; Street Address + City + State + ZIP. An address column alone is not enough. Headers are matched by exact name, case-insensitive, with no column mapping: address | street | street address; first name | firstname | first; last name | lastname | last; city; state | st; zip | zipcode | zip code | postal code. A single full-name column (name | full name | fullname | owner name | owner) counts as First + Last when the first or last name column is missing; a company name in it (LLC, Inc., etc.) only counts with the full street, city, state and ZIP. Other columns, such as your own ID, are kept and come back in the results.\n\nRows without a combination are skipped and never charged; the response then adds skippedCount and skippedReason, and recordCount counts only the rows that will be searched. A file where no row qualifies returns 400 with invalidCount.\n\ndataTypes: a JSON array string; list each type once. Credits: recordCount x the number of data types are reserved now (402 with needed, available, reserved and total if not available). When the job finishes, each row is charged 1 credit per requested type it actually returned, and the rest is released.\n\nUploads accept no idempotency key: resending creates a second job and a second reservation.\n\nResponse data: jobId, lookupId, recordCount, dataTypes, creditsPerMatch, status, message, plus skippedCount and skippedReason when rows were skipped.",
             "body": {
               "mode": "formdata",
               "formdata": [
@@ -129,18 +154,30 @@
                   "key": "file",
                   "type": "file",
                   "src": [],
-                  "description": "CSV file (.csv). Must include a header row and at least one data row."
+                  "description": "Your CSV (see the rules above)."
                 },
                 {
                   "key": "dataTypes",
                   "value": "[\"phone\",\"email\"]",
                   "type": "text",
-                  "description": "JSON array string of data types to append, e.g. [\"phone\"], [\"email\"], or [\"phone\",\"email\"]."
+                  "description": "[\"phone\"], [\"email\"] or [\"phone\",\"email\"]"
                 }
               ]
-            },
-            "description": "Upload a CSV file for high-volume Standard Search processing. The CSV must contain at minimum an 'address' column; firstName, lastName, city, state, and zip columns narrow each search. Credits are reserved upfront and adjusted to actual matches after processing completes (1 credit per data type per match). Returns a jobId to poll for status and download results.\n\nResponse data: jobId, lookupId, recordCount, dataTypes[], creditsPerMatch, status, message."
-          }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let body = {};",
+                  "try { body = pm.response.json(); } catch (e) {}",
+                  "if (body.success && body.data && body.data.jobId) pm.collectionVariables.set(\"jobId\", body.data.jobId);"
+                ]
+              }
+            }
+          ]
         },
         {
           "name": "Check bulk job status",
@@ -158,7 +195,7 @@
                 "status"
               ]
             },
-            "description": "Poll the progress of a bulk processing job.\n\nResponse data: jobId, status (uploading | queued | processing | completed | failed), progress (0-100), estimatedSecondsRemaining, numRecords, numMatches, errorMessage."
+            "description": "Poll every 5-10 seconds; each poll counts toward the key's 60 requests per minute. There are no webhooks.\n\nResponse data: jobId, status (uploading | queued | processing | completed | failed; treat any other value as still processing), progress (0-100), estimatedSecondsRemaining, numRecords, numMatches, errorMessage (null unless failed).\n\nA failed job releases its reservation. It can occasionally still finish later and be charged, so check its status again before uploading the same file again."
           }
         },
         {
@@ -167,7 +204,7 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/bulk/{{jobId}}/download?format=json",
+              "raw": "{{baseUrl}}/bulk/{{jobId}}/download?format=csv&layout=standard",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -179,19 +216,311 @@
               "query": [
                 {
                   "key": "format",
-                  "value": "json",
-                  "description": "Response format: json (default) or csv."
+                  "value": "csv",
+                  "description": "csv, or json (the default)."
+                },
+                {
+                  "key": "layout",
+                  "value": "standard",
+                  "description": "Send standard. Leaving it out returns the older layout."
                 }
               ]
             },
-            "description": "Download the results of a completed bulk job as JSON (default) or CSV. The job must be in the 'completed' status."
+            "description": "Downloads a completed job (400 'Job is not completed yet' otherwise). Always send layout=standard.\n\nlayout=standard: your uploaded columns, then Match Found (Yes/No), Phone 1-6 with Line Type 1-6, Mobile 1-3, Landline 1-3 and Email 1, Email 2... when emails were requested. With format=csv you get that table as a CSV file; cells that start with =, +, @ (or - when not a number) get a leading ' so spreadsheets don't run them. As JSON, data is {jobId, numRecords, numMatches, creditsCharged, columns, results}, with results as one object per row keyed by column name.\n\nSkipped rows are not in the results, so join on your own ID column rather than row position.\n\nWithout layout you get the older layout, kept unchanged for existing integrations (in JSON, data.results is usually the whole file as one CSV string). Jobs started from a list skip trace always use the standard layout."
           }
         }
       ]
     },
     {
+      "name": "List Builder",
+      "description": "Property lists with the same filters as the app's List Builder page. API key only (a browser session is refused). List Builder must be on for the account, otherwise 403 code LIST_BUILDER_DISABLED. 1 credit per record pulled.",
+      "item": [
+        {
+          "name": "Get filter options",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/lists/filters",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "lists",
+                "filters"
+              ]
+            },
+            "description": "Free. Every value the filters object accepts: location types and states, quick lists, owner, property, loan and lien types, timing presets, filings, range fields and the record columns (with types and defaults)."
+          }
+        },
+        {
+          "name": "Preview a list (free)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/lists/preview",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "lists",
+                "preview"
+              ]
+            },
+            "description": "Counts matching properties and shows the cost, without pulling or charging. Send the filters you will create the list with.\n\nLimits: 20 previews per minute per account, shared with the List Builder page (429 PREVIEW_MINUTE_LIMIT, Retry-After: 60), and 250 per UTC day (429 PREVIEW_DAILY_LIMIT with limit and resetsAt). 503 PREVIEW_UNAVAILABLE: try again.\n\nInvalid filters return 400 with field naming the bad path. Unknown keys are refused.\n\nResponse data: matchCount, creditsPerRecord, maxRecordsLimit, maxRecords, recordsToPull, estimatedCredits, creditsToReserve.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"filters\": {\n    \"location\": {\n      \"state\": \"AZ\",\n      \"kind\": \"county\",\n      \"values\": [\n        \"Maricopa\"\n      ]\n    },\n    \"quicklists\": [\n      \"absentee-owner\",\n      \"high-equity\"\n    ],\n    \"quicklistMatch\": \"all\",\n    \"propertyTypes\": [\n      \"single-family\"\n    ],\n    \"ranges\": {\n      \"yearBuilt\": {\n        \"min\": 1960\n      }\n    }\n  },\n  \"maxRecords\": 500\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Create a list",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{createListIdempotencyKey}}",
+                "description": "Optional, recommended."
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/lists",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "lists"
+              ]
+            },
+            "description": "Creates the list and starts pulling in the background (status processing). The test script saves data.listId into listId.\n\nmaxRecords (1-100,000) credits are reserved now; when the pull ends you are charged for the records pulled and the rest is released. Set maxRecords to the preview's recordsToPull to hold only what you need. 402 with needed, available, reserved and total.\n\nIdempotency-Key (1-255 visible ASCII characters, no spaces): the same key and body within 24 hours returns the original response with Idempotent-Replayed: true, with no second list or charge. The same key with a different body: 400 IDEMPOTENCY_KEY_REUSED. A retry while the first request runs: 409 IDEMPOTENCY_IN_PROGRESS, so retry shortly with the same key. The pre-request script creates a key and keeps it until a 2xx, so resending after a failure is a safe retry.\n\nUp to 5 lists can pull at once per account (429 ACTIVE_PULL_LIMIT).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Maricopa absentee high equity\",\n  \"maxRecords\": 500,\n  \"filters\": {\n    \"location\": {\n      \"state\": \"AZ\",\n      \"kind\": \"county\",\n      \"values\": [\n        \"Maricopa\"\n      ]\n    },\n    \"quicklists\": [\n      \"absentee-owner\",\n      \"high-equity\"\n    ],\n    \"quicklistMatch\": \"all\",\n    \"propertyTypes\": [\n      \"single-family\"\n    ],\n    \"ranges\": {\n      \"yearBuilt\": {\n        \"min\": 1960\n      }\n    }\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// One key per new request; it is kept until a 2xx so a resend after a timeout, 409 or 5xx is a safe retry.",
+                  "if (!pm.collectionVariables.get(\"createListIdempotencyKey\")) pm.collectionVariables.set(\"createListIdempotencyKey\", pm.variables.replaceIn(\"{{$guid}}\"));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let body = {};",
+                  "try { body = pm.response.json(); } catch (e) {}",
+                  "if (body.success && body.data && body.data.listId) pm.collectionVariables.set(\"listId\", body.data.listId);",
+                  "if (pm.response.code >= 200 && pm.response.code < 300) pm.collectionVariables.unset(\"createListIdempotencyKey\");"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List your lists",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/lists?limit=50&offset=0",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "lists"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "50",
+                  "description": "1-100, default 50."
+                },
+                {
+                  "key": "offset",
+                  "value": "0"
+                }
+              ]
+            },
+            "description": "Newest first, including lists made in the app (createdVia app) and combined lists (type stack, filters null).\n\nResponse data: lists [list resource], pagination {limit, offset, total, hasMore}."
+          }
+        },
+        {
+          "name": "Get a list",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/lists/{{listId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "lists",
+                "{{listId}}"
+              ]
+            },
+            "description": "Poll every 5-10 seconds while it pulls. status: processing | completed | failed; treat any other value as processing.\n\nstatus turns completed or failed only once credits are final, so creditsCharged is then the final charge. A failed list keeps (and charges for) the records pulled before it stopped.\n\nResponse data: listId, name, type, status, progress, recordCount, maxRecords, creditsReserved, creditsCharged, filters, errorMessage, createdVia, createdAt, updatedAt, completedAt."
+          }
+        },
+        {
+          "name": "Get list records (JSON)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/lists/{{listId}}/records?limit=100&offset=0",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "lists",
+                "{{listId}}",
+                "records"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "100",
+                  "description": "1-500, default 100."
+                },
+                {
+                  "key": "offset",
+                  "value": "0"
+                },
+                {
+                  "key": "columns",
+                  "value": "propStreet,propCity,propState,propZip,ownerName",
+                  "disabled": true,
+                  "description": "Comma-separated column keys from GET /lists/filters, up to 35. Default: 20 columns."
+                }
+              ]
+            },
+            "description": "Free. A page of records from a finished list (400 LIST_NOT_READY or LIST_FAILED otherwise). Each record has propertyId (stable across lists, use it to remove duplicates) plus the requested columns.\n\nValues are typed: numbers, true/false, dates as YYYY-MM-DD, arrays for allLoanTypes and quickListFlags, null when empty.\n\nResponse data: listId, columns, records, pagination {limit, offset, total, hasMore}."
+          }
+        },
+        {
+          "name": "Download list as CSV",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/lists/{{listId}}/download",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "lists",
+                "{{listId}}",
+                "download"
+              ],
+              "query": [
+                {
+                  "key": "columns",
+                  "value": "propStreet,propCity,propState,propZip,ownerName,mailStreet,mailCity,mailState,mailZip",
+                  "disabled": true,
+                  "description": "Same as the records endpoint."
+                }
+              ]
+            },
+            "description": "Free. Every record of a finished list as CSV; header row = column keys, propertyId first; lists joined with '; '. Cells that start with =, +, @ (or - when not a number) get a leading '. Up to 2 downloads at once per account (429 DOWNLOAD_LIMIT)."
+          }
+        },
+        {
+          "name": "Skip trace a list",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{skipTraceIdempotencyKey}}",
+                "description": "Optional, recommended."
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/lists/{{listId}}/skip-trace",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "lists",
+                "{{listId}}",
+                "skip-trace"
+              ]
+            },
+            "description": "Skip traces a completed list as a bulk job. The test script saves data.jobId into jobId: track it with Check bulk job status and download it with Download bulk job results (list jobs always use the standard layout, with a Property ID column).\n\ndataTypes is optional (default [\"phone\"]); duplicates are collapsed here. Same price as bulk: 1 credit per requested type returned per record; maxCredits is reserved now. Records with no address are skipped (skippedCount).\n\nNeeds a completed list with records (400 LIST_NOT_READY, LIST_FAILED or LIST_EMPTY). One set-up at a time per account (429 SKIP_TRACE_IN_PROGRESS; 429 SKIP_TRACE_BUSY with Retry-After). Idempotency-Key works as for Create a list.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"dataTypes\": [\n    \"phone\",\n    \"email\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// One key per new request; it is kept until a 2xx so a resend after a timeout, 409 or 5xx is a safe retry.",
+                  "if (!pm.collectionVariables.get(\"skipTraceIdempotencyKey\")) pm.collectionVariables.set(\"skipTraceIdempotencyKey\", pm.variables.replaceIn(\"{{$guid}}\"));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let body = {};",
+                  "try { body = pm.response.json(); } catch (e) {}",
+                  "if (body.success && body.data && body.data.jobId) pm.collectionVariables.set(\"jobId\", body.data.jobId);",
+                  "if (pm.response.code >= 200 && pm.response.code < 300) pm.collectionVariables.unset(\"skipTraceIdempotencyKey\");"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "Digital Matching",
-      "description": "Turn a contact CSV into ready-to-upload Custom Audience files for major ad platforms. Securely hashed identifiers, formatted per platform. Digital Matching prepares the files; it does not launch campaigns.",
+      "description": "Turn a contact CSV into Custom Audience files for ad platforms. Digital Matching must be turned on for the account; otherwise the upload returns 403 'Digital Matching access is not enabled for this account' (no code). It prepares files; it does not launch campaigns.",
       "item": [
         {
           "name": "Upload CSV to build ad audiences",
@@ -208,6 +537,7 @@
                 "upload"
               ]
             },
+            "description": "Starts a Digital Matching job. The test script saves data.jobId into audienceJobId.\n\nThe CSV needs an email or phone column, or a name with city + state, or a name with ZIP, or street + city + state + ZIP. Headers are matched by exact name: email | e-mail | email address | emailaddress; phone | phone number | phonenumber | mobile | cell | cell phone; plus the bulk name and address names. UTF-8, no line breaks inside cells, 100 MB, 50,000 rows.\n\nplatforms: a JSON array string with any of facebook, google, linkedin, tiktok, generic.\n\nCredits: every row is reserved at creditsPerMatch (shown in the response); only matched contacts are charged, all selected platforms included. 402 with needed, available, reserved and total if not enough is available.\n\nBy uploading you confirm you have the right to use the list for advertising and will follow each ad platform's customer-list policies.\n\nResponse data: jobId, lookupId, recordCount, platforms, creditsPerMatch, status, message.",
             "body": {
               "mode": "formdata",
               "formdata": [
@@ -215,18 +545,30 @@
                   "key": "file",
                   "type": "file",
                   "src": [],
-                  "description": "CSV file (.csv). Must include a header row and at least one data row."
+                  "description": "Contact CSV."
                 },
                 {
                   "key": "platforms",
                   "value": "[\"facebook\",\"google\"]",
                   "type": "text",
-                  "description": "JSON array string of target platforms: \"facebook\", \"google\", \"linkedin\", \"tiktok\", \"generic\"."
+                  "description": "Any of facebook, google, linkedin, tiktok, generic."
                 }
               ]
-            },
-            "description": "Upload a contact CSV and receive ready-to-upload Custom Audience files for the selected ad platforms. The CSV needs an email or phone column, or a name plus address/city/state/zip columns. Credits are reserved upfront and only matched contacts are charged (flat rate per matched contact — every selected platform included).\n\nBy uploading you confirm you have the right to use the list for advertising and will follow each ad platform's customer-list policies.\n\nResponse data: jobId, lookupId, recordCount, platforms[], creditsPerMatch, status, message."
-          }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let body = {};",
+                  "try { body = pm.response.json(); } catch (e) {}",
+                  "if (body.success && body.data && body.data.jobId) pm.collectionVariables.set(\"audienceJobId\", body.data.jobId);"
+                ]
+              }
+            }
+          ]
         },
         {
           "name": "Check Digital Matching job status",
@@ -234,17 +576,17 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/audience/{{jobId}}/status",
+              "raw": "{{baseUrl}}/audience/{{audienceJobId}}/status",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "audience",
-                "{{jobId}}",
+                "{{audienceJobId}}",
                 "status"
               ]
             },
-            "description": "Poll the progress of a Digital Matching job."
+            "description": "Response data: jobId, status, progress, numRecords, numMatches, creditsCharged, platforms, platformCounts, errorMessage."
           }
         },
         {
@@ -253,13 +595,13 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/audience/{{jobId}}/download",
+              "raw": "{{baseUrl}}/audience/{{audienceJobId}}/download",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "audience",
-                "{{jobId}}",
+                "{{audienceJobId}}",
                 "download"
               ],
               "query": [
@@ -267,18 +609,18 @@
                   "key": "platform",
                   "value": "facebook",
                   "disabled": true,
-                  "description": "Optional: facebook | google | linkedin | tiktok | generic. Download a single platform's CSV instead of the full ZIP."
+                  "description": "Optional: one of the job's platforms."
                 }
               ]
             },
-            "description": "Download the completed job's audience files. Default is a ZIP containing one ready-to-upload CSV per selected platform, a master data file, and upload instructions. Pass ?platform= to download a single platform's CSV instead. The job must be in the 'completed' status."
+            "description": "A completed job's files. Default: a ZIP with one file per selected platform that has matches (facebook_instagram_custom_audience.csv, google_ads_customer_match.csv, linkedin_contact_list.csv, tiktok_customer_file.csv, generic_hashed_audience.csv), master_audience_data.csv and README.txt.\n\nThe platform files hold hashed identifiers. master_audience_data.csv holds your uploaded rows as you sent them (not hashed), followed by the appended match columns (the same hashed identifiers). Keep it for reference; it isn't meant for upload.\n\n?platform= returns that platform's CSV alone; it must be one of the job's platforms (400 'Unknown platform for this job')."
           }
         }
       ]
     },
     {
       "name": "Account",
-      "description": "Credit balance and API usage.",
+      "description": "Free calls: use them to check a key and a setup.",
       "item": [
         {
           "name": "Check credit balance",
@@ -294,7 +636,7 @@
                 "credits"
               ]
             },
-            "description": "Returns your current credit balance, including subscription credits and wallet balance.\n\nResponse data: subscriptionCredits, walletCredits, reservedCredits, totalCredits, availableCredits, subscriptionStatus."
+            "description": "Response data: subscriptionCredits, walletCredits, reservedCredits, totalCredits, availableCredits, subscriptionStatus.\n\navailableCredits = total minus credits reserved by running jobs; it is what a new search or upload can use."
           }
         },
         {
@@ -314,16 +656,35 @@
                 {
                   "key": "limit",
                   "value": "50",
-                  "description": "Number of recent activity records to return (1-100, default 50)."
+                  "description": "1-100, default 50 (larger values are reduced to 100)."
                 },
                 {
                   "key": "offset",
-                  "value": "0",
-                  "description": "Number of records to skip for pagination (default 0)."
+                  "value": "0"
                 }
               ]
             },
-            "description": "Returns aggregate API usage statistics plus a paginated list of recent requests."
+            "description": "Requests made with your API keys, newest first, plus totals.\n\nResponse data: stats {totalRequests, totalCreditsUsed, requestsToday, requestsThisMonth}, recentActivity [{id, endpoint, method, statusCode, creditsUsed, timestamp}], pagination {limit, offset, hasMore}.\n\ncreditsUsed is 0 on bulk, Digital Matching and list-create requests, because those are charged when the job finishes. hasMore is true whenever the page is full, even on the last page. Bad limit or offset values return 400 with field."
+          }
+        },
+        {
+          "name": "Download the OpenAPI spec",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/openapi.json",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "openapi.json"
+              ]
+            },
+            "description": "The OpenAPI 3 file for this API. No key needed.",
+            "auth": {
+              "type": "noauth"
+            }
           }
         }
       ]
