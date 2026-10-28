@@ -1,0 +1,5 @@
+Record ID,First Name,Last Name,Address,City,State,Zip
+1001,Jane,Doe,123 Main St,Austin,TX,78701
+1002,John,Smith,,,,78701
+1003,Maria,Lopez,,Phoenix,AZ,
+1004,,,456 Oak Ave,Denver,CO,80202
